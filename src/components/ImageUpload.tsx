@@ -16,22 +16,28 @@ const ImageUpload = () => {
         dispatch(clearFaces())
 
         const file = e.target.files?.[0]
-        if(!file) return
+        if (!file) return
 
         const image = URL.createObjectURL(file)
         setImageURL(image)
 
         setTimeout(async () => {
             if (!imgRef.current) return
+
+            // Load models from public/models
             await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
             await faceapi.nets.ageGenderNet.loadFromUri('/models')
             await faceapi.nets.faceExpressionNet.loadFromUri('/models')
+            await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
 
-            const detections = await faceapi.detectAllFaces(
-                imgRef.current,
-                new faceapi.TinyFaceDetectorOptions()
-            ).withAgeAndGender().withFaceExpressions()
+            // Detect faces with landmarks, age, gender and expressions
+            const detections = await faceapi
+                .detectAllFaces(imgRef.current, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withAgeAndGender()
+                .withFaceExpressions()
 
+            // Map data for Redux
             const faceData = detections.map((det, i) => ({
                 id: `${Date.now()} - ${i}`,
                 age: Math.round(det.age),
@@ -42,10 +48,19 @@ const ImageUpload = () => {
 
             dispatch(setFaces(faceData))
 
+            // Draw on canvas
             if (canvasRef.current && imgRef.current) {
-                canvasRef.current.innerHTML = ''
-                faceapi.draw.matchDimensions(canvasRef.current, detections.map(d => d.detection))
+                const canvas = canvasRef.current
+                const image = imgRef.current
+
+                canvas.width = image.width
+                canvas.height = image.height
+
+                faceapi.draw.drawDetections(canvas, detections)
+                faceapi.draw.drawFaceLandmarks(canvas, detections)
+                faceapi.draw.drawFaceExpressions(canvas, detections)
             }
+
         }, 100)
     }
 
@@ -55,7 +70,7 @@ const ImageUpload = () => {
                 type="file"
                 accept="image/*"
                 onChange={handleImageUpload}
-                className="mb-2" 
+                className="mb-2"
             />
             {
                 imageURL && (
@@ -64,7 +79,7 @@ const ImageUpload = () => {
                             ref={imgRef}
                             src={imageURL}
                             alt="Uploaded"
-                            className="rounded-xl max-w-full" 
+                            className="rounded-xl max-w-full"
                         />
                         <canvas ref={canvasRef} className="absolute top-0 left-0" />
                     </div>
